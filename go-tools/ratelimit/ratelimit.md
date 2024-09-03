@@ -160,6 +160,21 @@ func (lim *Limiter) advance(t time.Time) (newT time.Time, newTokens float64) {
 返回`Reservation`对象后，调用方可以调用`DelayFrom`方法获取拿到请求数量的令牌需要等待的时间，也可以通过Cancel方法取消请求，这里重点看看`CancelAt`方法的实现。这里不太清楚为什么需要减去最近一次reserve消费与当前timeToAct经历时间所预支的令牌数，感觉只需要归还当前请求的token数目即可，似乎是一个bug? 恢复令牌数后更新当前令牌桶的令牌数以及最近一次更新的时间为t，并更新lastEvent时间戳。
 
 ```go
+// DelayFrom returns the duration for which the reservation holder must wait
+// before taking the reserved action.  Zero duration means act immediately.
+// InfDuration means the limiter cannot grant the tokens requested in this
+// Reservation within the maximum wait time.
+func (r *Reservation) DelayFrom(t time.Time) time.Duration {
+	if !r.ok {
+		return InfDuration
+	}
+	delay := r.timeToAct.Sub(t)
+	if delay < 0 {
+		return 0
+	}
+	return delay
+}
+
 // CancelAt indicates that the reservation holder will not perform the reserved action
 // and reverses the effects of this Reservation on the rate limit as much as possible,
 // considering that other reservations may have already been made.
@@ -203,7 +218,75 @@ func (r *Reservation) CancelAt(t time.Time) {
 }
 ```
 
-最后是`WaitN`和`Wait`方法了，可以直接看代码，其实就是调用`ReserveN`和该方法返回的`Reservation`对象的`DelayFrom`方法。
+最后是`WaitN`和`Wait`方法了，可以看到这两个方法都是调用`wait`方法。
+```go
+// Wait is shorthand for WaitN(ctx, 1).
+func (lim *Limiter) Wait(ctx context.Context) (err error) {
+	return lim.WaitN(ctx, 1)  // 实际调用WaitN方法
+}
+
+// WaitN blocks until lim permits n events to happen.
+// It returns an error if n exceeds the Limiter's burst size, the Context is
+// canceled, or the expected wait time exceeds the Context's Deadline.
+// The burst limit is ignored if the rate limit is Inf.
+func (lim *Limiter) WaitN(ctx context.Context, n int) (err error) {
+	// The test code calls lim.wait with a fake timer generator.
+	// This is the real timer generator.
+	newTimer := func(d time.Duration) (<-chan time.Time, func() bool, func()) {
+		timer := time.NewTimer(d)
+		return timer.C, timer.Stop, func() {}
+	}
+    // 调用lim.Wait
+	return lim.wait(ctx, n, time.Now(), newTimer)
+}
+
+// wait is the internal implementation of WaitN.
+func (lim *Limiter) wait(ctx context.Context, n int, t time.Time, newTimer func(d time.Duration) (<-chan time.Time, func() bool, func())) error {
+	lim.mu.Lock()
+	burst := lim.burst
+	limit := lim.limit
+	lim.mu.Unlock()
+
+	if n > burst && limit != Inf { // 处理边界条件，也就是请求令牌数大于令牌桶令牌数并且生成令牌的速率不是无穷大的
+		return fmt.Errorf("rate: Wait(n=%d) exceeds limiter's burst %d", n, burst)
+	}
+	// Check if ctx is already cancelled
+	select {
+	case <-ctx.Done(): // 如果context取消了或超时了则直接退出
+		return ctx.Err()
+	default:
+	}
+	// Determine wait limit
+	waitLimit := InfDuration
+	if deadline, ok := ctx.Deadline(); ok {
+		waitLimit = deadline.Sub(t)
+	}
+	// Reserve
+    // 如果预留失败，则返回Error；否则执行后面的逻辑，阻塞等待
+	r := lim.reserveN(t, n, waitLimit)
+	if !r.ok {
+		return fmt.Errorf("rate: Wait(n=%d) would exceed context deadline", n)
+	}
+	// Wait if necessary
+	delay := r.DelayFrom(t)
+	if delay == 0 {
+		return nil
+	}
+	ch, stop, advance := newTimer(delay)
+	defer stop()
+	advance() // only has an effect when testing
+	select {
+	case <-ch:
+		// We can proceed.
+		return nil
+	case <-ctx.Done():
+		// Context was canceled before we could proceed.  Cancel the
+		// reservation, which may permit other events to proceed sooner.
+		r.Cancel()
+		return ctx.Err()
+	}
+}
+```
 
 
 
