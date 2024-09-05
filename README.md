@@ -1,19 +1,12 @@
-# go-notes
+# go笔记
 
-go basic, internals and applications (microservice, design patterns, etc)
+## 工具库
 
-go internals
+[Go官方限流库`golang.org/x/time/rate`使用与源码解析](./libs/ratelimit/ratelimit.md)
 
-- [ ] channel
-- [ ] map
-- [ ] gmp
+## 设计模式
 
-applications
+## kubernetes
 
-- [ ] go-micro
-- [ ] grpc
 
-language characteristics and tools
 
-- [ ] pprof
-- [ ] delv
