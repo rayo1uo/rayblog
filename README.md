@@ -1,8 +1,6 @@
-# go笔记
+# blog
 
 ## 最佳实践
-
-[Go实现生产者消费者模型](./godev/consumer_producer_model/notes/notes.md)
 
 ## 工具库
 
