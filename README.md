@@ -10,6 +10,8 @@
 
 ## 设计模式
 
+[依赖注入与Go依赖注入解决方案uber/fx](./designpattern/di/di.md)
+
 ## kubernetes
 
 ### client-go

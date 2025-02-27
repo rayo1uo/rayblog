@@ -254,6 +254,17 @@ func (q *Typed[T]) ShutDownWithDrain() {
 }
 ```
 
+最后再来总结一下通用队列中的dirty集合与processing集合的作用：
+
++ dirty集合：针对待消费的元素进行去重
++ processing集合：主要用来避免入队元素被并发处理，严格避免同一个元素被并发处理，符合kubernetes controller的场景设计
+
+## 延时队列
+
+
+
+## 限速队列
+
 ## 小任务
 
 阅读完workqueue的源代码，修复client-go workqueue子目录单测里面的deprecated函数。
