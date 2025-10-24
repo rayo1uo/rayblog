@@ -1,93 +1,45 @@
 package main
 
 import (
-	"errors"
+	"context"
 	"fmt"
+	"fxdemo/logger"
+	"fxdemo/service"
 
 	"go.uber.org/fx"
 )
 
-type Logger interface {
-	Log(message string)
-}
-
-// Soft Value Group 的依赖参数
-type LoggerParams struct {
-	fx.In
-	Loggers []Logger `group:"loggers"` // 添加 "soft" 标记
-}
-
-// 结果类型 - 用于标记组成员
-type LoggerResult struct {
-	fx.Out
-	Logger Logger `group:"loggers"` // 添加 soft 标记
-}
-
-// 初始化文件日志（模拟失败）
-func NewFileLogger() LoggerResult {
-	logger, err := createFileLogger()
-	if err != nil {
-		fmt.Println("文件日志初始化失败:", err)
-		return LoggerResult{}
-	}
-	return LoggerResult{Logger: logger}
-}
-
-func createFileLogger() (Logger, error) {
-	return nil, errors.New("file logger init failed")
-}
-
-// 初始化网络日志（模拟失败）
-func NewNetworkLogger() LoggerResult {
-	logger, err := createNetworkLogger()
-	if err != nil {
-		fmt.Println("网络日志初始化失败:", err)
-		return LoggerResult{}
-	}
-	return LoggerResult{Logger: logger}
-}
-
-func createNetworkLogger() (Logger, error) {
-	return nil, errors.New("network logger init failed")
-}
-
-// 初始化控制台日志（成功）
-func NewConsoleLogger() LoggerResult {
-	logger, err := createConsoleLogger()
-	if err != nil {
-		fmt.Println("控制台日志初始化失败:", err)
-		return LoggerResult{}
-	}
-	return LoggerResult{Logger: logger}
-}
-
-func createConsoleLogger() (Logger, error) {
-	return &consoleLogger{}, nil
-}
-
-type consoleLogger struct{}
-
-func (c *consoleLogger) Log(message string) {
-	fmt.Println("Console Log:", message)
+func register(calc *service.Calculator) {
+	// 使用Calculator服务进行一些计算
+	result1 := calc.Add(5, 3)
+	result2 := calc.Multiply(4, 2)
+	fmt.Printf("计算结果: 5 + 3 = %d, 4 * 2 = %d\n", result1, result2)
 }
 
 func main() {
 	app := fx.New(
+		// 提供所需的依赖
 		fx.Provide(
-			NewFileLogger,    // 失败
-			NewNetworkLogger, // 失败
-			NewConsoleLogger, // 成功
+			logger.NewLogger,      // 提供Logger实例
+			service.NewCalculator, // 提供Calculator实例
 		),
-		fx.Invoke(func(params LoggerParams) {
-			fmt.Println("成功初始化的日志服务数量:", len(params.Loggers))
-			for _, logger := range params.Loggers {
-				if logger == nil {
-					continue
-				}
-				logger.Log("Hello from Value Group!")
-			}
+		// 注册初始化函数
+		fx.Invoke(register),
+		// 添加生命周期钩子
+		fx.Invoke(func(lc fx.Lifecycle, log logger.Logger) {
+			lc.Append(fx.Hook{
+				OnStart: func(context.Context) error {
+					log.Info("应用启动")
+					return nil
+				},
+				OnStop: func(context.Context) error {
+					log.Info("应用停止")
+					return nil
+				},
+			})
 		}),
 	)
 
+	// 启动应用
 	app.Run()
 }
