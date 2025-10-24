@@ -53,3 +53,7 @@ IOC理论：借助于“第三方”实现具有依赖关系的对象之间的�
 https://pkg.go.dev/go.uber.org/fx#pkg-overview (首推)
 
 https://uber-go.github.io/fx/get-started/index.html
+
+### fx demo
+
+[FX 依赖注入示例](./fxdemo/README.md)
